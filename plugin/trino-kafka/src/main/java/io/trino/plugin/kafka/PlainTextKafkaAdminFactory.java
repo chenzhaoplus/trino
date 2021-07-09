@@ -14,9 +14,9 @@
 
 package io.trino.plugin.kafka;
 
-import io.trino.plugin.kafka.security.SecurityProtocol;
 import io.trino.spi.HostAddress;
 import io.trino.spi.connector.ConnectorSession;
+import org.apache.kafka.common.security.auth.SecurityProtocol;
 
 import javax.inject.Inject;
 
@@ -35,12 +35,15 @@ public class PlainTextKafkaAdminFactory
     private final SecurityProtocol securityProtocol;
 
     @Inject
-    public PlainTextKafkaAdminFactory(KafkaConfig kafkaConfig)
+    public PlainTextKafkaAdminFactory(
+            KafkaConfig kafkaConfig,
+            KafkaSecurityConfig securityConfig)
     {
         requireNonNull(kafkaConfig, "kafkaConfig is null");
+        requireNonNull(securityConfig, "securityConfig is null");
 
         nodes = kafkaConfig.getNodes();
-        securityProtocol = kafkaConfig.getSecurityProtocol();
+        securityProtocol = securityConfig.getSecurityProtocol();
     }
 
     @Override

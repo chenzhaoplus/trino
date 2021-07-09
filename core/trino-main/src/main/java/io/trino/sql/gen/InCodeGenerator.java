@@ -25,14 +25,11 @@ import io.airlift.bytecode.control.IfStatement;
 import io.airlift.bytecode.control.SwitchStatement.SwitchBuilder;
 import io.airlift.bytecode.instruction.LabelNode;
 import io.trino.metadata.ResolvedFunction;
-import io.trino.spi.type.BigintType;
-import io.trino.spi.type.DateType;
-import io.trino.spi.type.IntegerType;
+import io.trino.plugin.base.util.FastutilSetHelper;
 import io.trino.spi.type.Type;
 import io.trino.sql.relational.ConstantExpression;
 import io.trino.sql.relational.RowExpression;
 import io.trino.sql.relational.SpecialForm;
-import io.trino.util.FastutilSetHelper;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Collection;
@@ -46,6 +43,7 @@ import static io.airlift.bytecode.expression.BytecodeExpressions.constantFalse;
 import static io.airlift.bytecode.expression.BytecodeExpressions.constantTrue;
 import static io.airlift.bytecode.expression.BytecodeExpressions.invokeStatic;
 import static io.airlift.bytecode.instruction.JumpInstruction.jump;
+import static io.trino.plugin.base.util.FastutilSetHelper.toFastutilHashSet;
 import static io.trino.spi.function.InvocationConvention.InvocationArgumentConvention.NEVER_NULL;
 import static io.trino.spi.function.InvocationConvention.InvocationReturnConvention.FAIL_ON_NULL;
 import static io.trino.spi.function.InvocationConvention.InvocationReturnConvention.NULLABLE_RETURN;
@@ -56,7 +54,6 @@ import static io.trino.spi.function.OperatorType.INDETERMINATE;
 import static io.trino.sql.gen.BytecodeUtils.ifWasNullPopAndGoto;
 import static io.trino.sql.gen.BytecodeUtils.invoke;
 import static io.trino.sql.gen.BytecodeUtils.loadConstant;
-import static io.trino.util.FastutilSetHelper.toFastutilHashSet;
 import static java.lang.Math.toIntExact;
 
 public class InCodeGenerator
@@ -91,14 +88,14 @@ public class InCodeGenerator
     @VisibleForTesting
     static SwitchGenerationCase checkSwitchGenerationCase(Type type, List<RowExpression> values)
     {
-        if (values.size() > 32) {
-            // 32 is chosen because
-            // * SET_CONTAINS performs worst when smaller than but close to power of 2
-            // * Benchmark shows performance of SET_CONTAINS is better at 50, but similar at 25.
+        if ((type.getJavaType() != long.class && values.size() >= 8) || (type.getJavaType() == long.class && values.size() >= 16)) {
+            // SET_CONTAINS is generally faster for not super tiny IN lists.
+            // Tipping point for types based on long (benchmarked with BIGINT) (where DIRECT_SWITCH can be used) is between 10 and 20 (using round 16)
+            // Tipping point for other types (benchmarked with VARCHAR/DOUBLE) is between 5 and 10 (using round 8)
             return SwitchGenerationCase.SET_CONTAINS;
         }
 
-        if (!(type instanceof IntegerType || type instanceof BigintType || type instanceof DateType)) {
+        if (type.getJavaType() != long.class) {
             return SwitchGenerationCase.HASH_SWITCH;
         }
         for (RowExpression expression : values) {
